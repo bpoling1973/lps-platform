@@ -24,6 +24,7 @@ export default defineConfig({
         ],
       },
       workbox: {
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024, // 4 MiB
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
         runtimeCaching: [
           {
@@ -40,5 +41,19 @@ export default defineConfig({
   ],
   resolve: {
     alias: { '@': '/src' },
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('@react-pdf')) return 'vendor-pdf'
+          if (id.includes('recharts')) return 'vendor-charts'
+          if (id.includes('@dnd-kit')) return 'vendor-dnd'
+          if (id.includes('@supabase')) return 'vendor-supabase'
+          if (id.includes('react-router') || id.includes('react-dom') || (id.includes('node_modules/react/') && !id.includes('react-dom'))) return 'vendor-react'
+          if (id.includes('@tanstack') || id.includes('zustand')) return 'vendor-query'
+        },
+      },
+    },
   },
 })
