@@ -2139,7 +2139,13 @@ export default function WWPBoard() {
 
     const updated = [...current]
     updated[adjustedIdx] = next
-    updateTask.mutate({ id: task.id, day_statuses: updated, status: deriveStatus(updated) })
+
+    // Record when each segment status was last changed
+    const currentTimestamps = Array.from({ length: fullDuration }, (_, i) => task.day_statuses_at?.[i] || null)
+    const updatedTimestamps = [...currentTimestamps]
+    updatedTimestamps[adjustedIdx] = new Date().toISOString()
+
+    updateTask.mutate({ id: task.id, day_statuses: updated, day_statuses_at: updatedTimestamps, status: deriveStatus(updated) })
   }
 
   const deleteTask = useMutation({
