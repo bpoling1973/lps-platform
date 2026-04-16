@@ -23,11 +23,15 @@ export function AuthProvider({ children }) {
   }, [])
 
   async function loadProfile(userId) {
-    const { data } = await supabase
+    // Link any pending project invitations for this user's email
+    try { await supabase.rpc('link_my_invitations') } catch {}
+
+    const { data, error } = await supabase
       .from('profiles')
       .select('*, tenants(*)')
       .eq('id', userId)
       .single()
+    if (error) console.error('loadProfile failed:', error)
     setProfile(data)
   }
 

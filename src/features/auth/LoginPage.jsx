@@ -1,14 +1,16 @@
 import { useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation, useSearchParams } from 'react-router-dom'
 import { useAuth } from './AuthContext'
 
 export default function LoginPage() {
   const { signInWithEmail, signInWithMagicLink } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  const [searchParams] = useSearchParams()
   const from = location.state?.from?.pathname || '/'
+  const invitedEmail = searchParams.get('email') || ''
 
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(invitedEmail)
   const [password, setPassword] = useState('')
   const [mode, setMode] = useState('magic') // 'magic' | 'password'
   const [loading, setLoading] = useState(false)

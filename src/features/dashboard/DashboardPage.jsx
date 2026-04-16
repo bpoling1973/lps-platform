@@ -98,7 +98,7 @@ export default function DashboardPage() {
 
   // Derived metrics
   const latestPPC = ppcHistory[0]
-  const currentPPC = latestPPC ? Number(latestPPC.ppc_percent) : null
+  const currentPPC = latestPPC ? Math.round(Number(latestPPC.ppc_percent)) : null
   const ppcColour = currentPPC === null ? '#9ca3af' :
     currentPPC >= 80 ? '#1e3a5f' :
     currentPPC >= 60 ? '#d97706' : '#4b5563'

@@ -123,7 +123,8 @@ function MilestoneForm({ projectId, onClose, existing }) {
 
 export default function MilestonesPage() {
   const { projectId } = useParams()
-  const { data: role } = useMyProjectRole(projectId)
+  const { data: membership } = useMyProjectRole(projectId)
+  const role = membership?.role
   const queryClient = useQueryClient()
   const canEdit = role === 'project_admin'
 

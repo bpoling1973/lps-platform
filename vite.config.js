@@ -4,6 +4,9 @@ import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
+  server: {
+    host: true, // expose on local network so tablets/phones can connect
+  },
   plugins: [
     react(),
     tailwindcss(),

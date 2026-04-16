@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useParams, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/features/auth/AuthContext'
-import { useProject } from '@/hooks/useProject'
+import { useProject, useMyProjectRole } from '@/hooks/useProject'
 
 const NAV_ITEMS = [
   { path: 'dashboard', label: 'Dashboard', icon: '▦' },
@@ -10,12 +10,16 @@ const NAV_ITEMS = [
   { path: 'lookahead', label: 'Lookahead', icon: '⏱' },
   { path: 'ppc', label: 'PPC & RNC', icon: '↗' },
   { path: 'reports', label: 'Reports', icon: '⬇' },
+  { path: 'settings', label: 'Settings', icon: '⚙', adminOnly: true },
 ]
 
 export default function AppShell({ children }) {
   const { projectId } = useParams()
   const { user, profile, signOut, isSuperAdmin } = useAuth()
   const { data: project } = useProject(projectId)
+  const { data: membership } = useMyProjectRole(projectId)
+  const role = membership?.role
+  const visibleNavItems = NAV_ITEMS.filter(item => !item.adminOnly || role === 'project_admin')
   const location = useLocation()
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -28,7 +32,7 @@ export default function AppShell({ children }) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
       {/* Top bar */}
       <header className="h-14 flex items-center px-4 shadow-sm z-20"
         style={{ backgroundColor: '#1e3a5f' }}>
@@ -68,7 +72,7 @@ export default function AppShell({ children }) {
         {/* Sidebar nav (visible when in a project) */}
         {projectId && (
           <nav className="w-48 bg-white border-r border-gray-200 flex-shrink-0 hidden md:flex flex-col py-4">
-            {NAV_ITEMS.map(item => {
+            {visibleNavItems.map(item => {
               const active = currentPath === item.path
               return (
                 <Link
@@ -98,7 +102,7 @@ export default function AppShell({ children }) {
       {/* Bottom nav for mobile (when in a project) */}
       {projectId && (
         <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex z-20">
-          {NAV_ITEMS.slice(0, 5).map(item => {
+          {visibleNavItems.slice(0, 5).map(item => {
             const active = currentPath === item.path
             return (
               <Link

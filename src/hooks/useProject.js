@@ -36,7 +36,7 @@ export function useProject(projectId) {
         .select(`
           *,
           tenants(id, name),
-          project_members(id, role, user_id, invited_email, joined_at, profiles(id, full_name, email))
+          project_members(id, role, user_id, invited_email, joined_at, assigned_trades, profiles(id, full_name, email))
         `)
         .eq('id', projectId)
         .single()
@@ -48,7 +48,7 @@ export function useProject(projectId) {
   })
 }
 
-// Get current user's role in a project
+// Get current user's membership in a project (role + assigned_trades)
 export function useMyProjectRole(projectId) {
   const { user } = useAuth()
   return useQuery({
@@ -56,13 +56,13 @@ export function useMyProjectRole(projectId) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('project_members')
-        .select('role')
+        .select('role, assigned_trades')
         .eq('project_id', projectId)
         .eq('user_id', user.id)
         .single()
 
       if (error) return null
-      return data?.role
+      return data
     },
     enabled: !!projectId && !!user,
   })

@@ -2,19 +2,11 @@ import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import { useMyProjectRole } from '@/hooks/useProject'
+import { useMyProjectRole, useProject } from '@/hooks/useProject'
+import LookaheadTaskModal from './LookaheadTaskModal'
 
 const WEEKS_AHEAD = 6
-
-function getWeekLabel(offset) {
-  const now = new Date()
-  const day = now.getDay()
-  const diff = now.getDate() - day + (day === 0 ? -6 : 1)
-  const monday = new Date(now.setDate(diff + offset * 7))
-  const friday = new Date(monday)
-  friday.setDate(monday.getDate() + 4)
-  return `W+${offset}: ${monday.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} – ${friday.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`
-}
+const RAG_COLOURS = { navy: '#1e3a5f', amber: '#d97706', grey: '#4b5563' }
 
 function getCurrentWeekNumber() {
   const d = new Date()
@@ -24,6 +16,31 @@ function getCurrentWeekNumber() {
   return Math.ceil((((d - yearStart) / 86400000) + 1) / 7)
 }
 
+function getWeekDates(offset) {
+  const now = new Date()
+  const dayOfWeek = now.getDay() === 0 ? 7 : now.getDay()
+  const monday = new Date(now)
+  monday.setDate(now.getDate() - dayOfWeek + 1 + offset * 7)
+  monday.setHours(0, 0, 0, 0)
+  const friday = new Date(monday)
+  friday.setDate(monday.getDate() + 4)
+  return { monday, friday }
+}
+
+function getWeekLabel(offset) {
+  const { monday, friday } = getWeekDates(offset)
+  return `W+${offset}: ${monday.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} – ${friday.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`
+}
+
+function dateInWeek(dateStr, offset) {
+  if (!dateStr) return false
+  const { monday, friday } = getWeekDates(offset)
+  const d = new Date(dateStr + 'T00:00:00')
+  const sun = new Date(friday)
+  sun.setDate(friday.getDate() + 2) // include weekend
+  return d >= monday && d <= sun
+}
+
 function ConstraintBadge({ count }) {
   if (!count) return null
   return (
@@ -31,6 +48,60 @@ function ConstraintBadge({ count }) {
       style={{ backgroundColor: '#d97706' }}>
       {count}
     </span>
+  )
+}
+
+function FloatBadge({ task, milestones }) {
+  if (!task.milestone_id || !task.planned_start || !task.duration_days) return null
+  const milestone = milestones.find(m => m.id === task.milestone_id)
+  if (!milestone) return null
+
+  const startDate = new Date(task.planned_start + 'T00:00:00')
+  const finishDate = new Date(startDate)
+  finishDate.setDate(startDate.getDate() + Number(task.duration_days) - 1)
+  const milestoneDate = new Date(milestone.planned_date + 'T00:00:00')
+  const floatDays = Math.round((milestoneDate - finishDate) / (1000 * 60 * 60 * 24))
+
+  if (floatDays > 5) return null
+
+  if (floatDays > 0) return (
+    <span className="text-xs font-medium px-2 py-0.5 rounded-full border border-amber-300 bg-amber-50 text-amber-800 whitespace-nowrap">
+      ⚠ {floatDays}d float
+    </span>
+  )
+
+  return (
+    <span className="text-xs font-medium px-2 py-0.5 rounded-full border border-red-300 bg-red-50 text-red-700 whitespace-nowrap">
+      🚨 Float lost
+    </span>
+  )
+}
+
+function MilestoneBanner({ milestone }) {
+  const colour = RAG_COLOURS[milestone.rag_status] || RAG_COLOURS.grey
+  const plannedDate = new Date(milestone.planned_date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  const forecastDate = milestone.forecast_date
+    ? new Date(milestone.forecast_date + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+    : null
+
+  return (
+    <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg mb-1"
+      style={{ backgroundColor: colour + '12', borderLeft: `3px solid ${colour}` }}>
+      <span className="font-bold text-xs" style={{ color: colour }}>◆</span>
+      <div className="flex-1 min-w-0">
+        <span className="text-xs font-semibold text-gray-800 truncate">{milestone.name}</span>
+        <span className="text-xs text-gray-500 ml-2">Planned: {plannedDate}</span>
+        {forecastDate && forecastDate !== plannedDate && (
+          <span className="text-xs ml-2 font-medium" style={{ color: '#d97706' }}>
+            ⚠ Forecast: {forecastDate}
+          </span>
+        )}
+      </div>
+      <span className="text-xs font-medium px-2 py-0.5 rounded-full"
+        style={{ backgroundColor: colour + '20', color: colour }}>
+        {milestone.rag_status === 'navy' ? 'On Track' : milestone.rag_status === 'amber' ? 'At Risk' : 'Not Started'}
+      </span>
+    </div>
   )
 }
 
@@ -110,14 +181,17 @@ function ConstraintForm({ taskId, onClose }) {
 
 export default function LookaheadPage() {
   const { projectId } = useParams()
-  const { data: role } = useMyProjectRole(projectId)
+  const { data: membership } = useMyProjectRole(projectId)
+  const role = membership?.role
+  const { data: project } = useProject(projectId)
   const queryClient = useQueryClient()
   const canEdit = ['project_admin', 'planner'].includes(role)
 
-  const [showTaskForm, setShowTaskForm] = useState(false)
   const [showConstraintForm, setShowConstraintForm] = useState(null) // taskId
   const [expandedTask, setExpandedTask] = useState(null)
-  const [newTask, setNewTask] = useState({ title: '', trade: '', week_offset: 1 })
+  const [editingTask, setEditingTask] = useState(null) // null = new, task object = edit
+  const [showTaskModal, setShowTaskModal] = useState(false)
+  const [prefillWeek, setPrefillWeek] = useState(null)
 
   const currentWeek = getCurrentWeekNumber()
 
@@ -139,23 +213,18 @@ export default function LookaheadPage() {
     refetchInterval: 30000,
   })
 
-  const addTask = useMutation({
-    mutationFn: async (data) => {
-      const { error } = await supabase.from('phase_tasks').insert({
-        project_id: projectId,
-        phase: 'lookahead',
-        title: data.title,
-        trade: data.trade || null,
-        week_number: currentWeek + data.week_offset,
-        status: 'not_started',
-      })
+  const { data: milestones = [] } = useQuery({
+    queryKey: ['milestones', projectId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('milestones')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('planned_date', { ascending: true })
       if (error) throw error
+      return data
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['lookahead', projectId] })
-      setShowTaskForm(false)
-      setNewTask({ title: '', trade: '', week_offset: 1 })
-    },
+    enabled: !!projectId,
   })
 
   const resolveConstraint = useMutation({
@@ -168,18 +237,35 @@ export default function LookaheadPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['lookahead', projectId] }),
   })
 
-  // Group tasks by week
   const tasksByWeek = Array.from({ length: WEEKS_AHEAD }, (_, i) => {
     const weekNum = currentWeek + i + 1
+    const weekOffset = i + 1
+    const weekMilestones = milestones.filter(m =>
+      dateInWeek(m.planned_date, weekOffset) || dateInWeek(m.forecast_date, weekOffset)
+    )
     return {
       weekNum,
-      label: getWeekLabel(i + 1),
+      weekOffset,
+      label: getWeekLabel(weekOffset),
       tasks: tasks.filter(t => t.week_number === weekNum),
+      milestones: weekMilestones,
     }
   })
 
   const totalOpen = tasks.reduce((acc, t) =>
     acc + (t.constraints?.filter(c => c.status === 'open').length || 0), 0)
+
+  function openNewTask(weekNum) {
+    setEditingTask(null)
+    setPrefillWeek(weekNum)
+    setShowTaskModal(true)
+  }
+
+  function openEditTask(task) {
+    setEditingTask(task)
+    setPrefillWeek(null)
+    setShowTaskModal(true)
+  }
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -193,7 +279,8 @@ export default function LookaheadPage() {
           </p>
         </div>
         {canEdit && (
-          <button onClick={() => setShowTaskForm(v => !v)}
+          <button
+            onClick={() => openNewTask(currentWeek + 1)}
             className="px-4 py-2.5 rounded-lg text-white font-medium text-sm min-h-[48px]"
             style={{ backgroundColor: '#1e3a5f' }}>
             + Add Task
@@ -201,62 +288,38 @@ export default function LookaheadPage() {
         )}
       </div>
 
-      {showTaskForm && (
-        <form onSubmit={e => { e.preventDefault(); addTask.mutate(newTask) }}
-          className="bg-white rounded-xl border border-blue-300 p-4 mb-4 space-y-3">
-          <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-2">
-              <input type="text" required value={newTask.title}
-                onChange={e => setNewTask(f => ({ ...f, title: e.target.value }))}
-                placeholder="Task description"
-                className="w-full px-4 py-3 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            <input type="text" value={newTask.trade}
-              onChange={e => setNewTask(f => ({ ...f, trade: e.target.value }))}
-              placeholder="Trade"
-              className="w-full px-4 py-3 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div className="flex items-center gap-3">
-            <label className="text-sm font-medium text-gray-700">Week:</label>
-            <select value={newTask.week_offset}
-              onChange={e => setNewTask(f => ({ ...f, week_offset: Number(e.target.value) }))}
-              className="px-3 py-2 rounded-lg border border-gray-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-              {Array.from({ length: WEEKS_AHEAD }, (_, i) => (
-                <option key={i + 1} value={i + 1}>{getWeekLabel(i + 1)}</option>
-              ))}
-            </select>
-            <button type="submit" disabled={addTask.isPending}
-              className="px-4 py-2 rounded-lg text-white text-sm font-medium min-h-[40px]"
-              style={{ backgroundColor: '#1e3a5f' }}>
-              {addTask.isPending ? 'Adding…' : 'Add'}
-            </button>
-            <button type="button" onClick={() => setShowTaskForm(false)}
-              className="px-3 py-2 rounded-lg border border-gray-300 text-sm text-gray-600 min-h-[40px]">
-              Cancel
-            </button>
-          </div>
-        </form>
-      )}
-
       {isLoading ? (
         <div className="flex justify-center py-16">
           <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : (
         <div className="space-y-4">
-          {tasksByWeek.map(({ weekNum, label, tasks: weekTasks }) => (
+          {tasksByWeek.map(({ weekNum, weekOffset, label, tasks: weekTasks, milestones: weekMilestones }) => (
             <div key={weekNum} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between"
-                style={{ backgroundColor: '#f8fafc' }}>
-                <h2 className="font-semibold text-gray-800 text-sm 2xl:text-base">{label}</h2>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-500">{weekTasks.length} task{weekTasks.length !== 1 ? 's' : ''}</span>
-                  {weekTasks.some(t => t.constraints?.some(c => c.status === 'open')) && (
-                    <ConstraintBadge count={weekTasks.reduce((a, t) =>
-                      a + (t.constraints?.filter(c => c.status === 'open').length || 0), 0)} />
-                  )}
+              {/* Week header */}
+              <div className="px-4 py-3 border-b border-gray-100" style={{ backgroundColor: '#f8fafc' }}>
+                {/* Milestone banners */}
+                {weekMilestones.length > 0 && (
+                  <div className="mb-2 space-y-1">
+                    {weekMilestones.map(m => <MilestoneBanner key={m.id} milestone={m} />)}
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <h2 className="font-semibold text-gray-800 text-sm 2xl:text-base">{label}</h2>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500">{weekTasks.length} task{weekTasks.length !== 1 ? 's' : ''}</span>
+                    {weekTasks.some(t => t.constraints?.some(c => c.status === 'open')) && (
+                      <ConstraintBadge count={weekTasks.reduce((a, t) =>
+                        a + (t.constraints?.filter(c => c.status === 'open').length || 0), 0)} />
+                    )}
+                    {canEdit && (
+                      <button
+                        onClick={() => openNewTask(weekNum)}
+                        className="text-xs px-2 py-1 rounded border border-gray-200 text-gray-500 hover:bg-gray-50 min-h-[30px]">
+                        + Task
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -266,21 +329,42 @@ export default function LookaheadPage() {
                 <div className="divide-y divide-gray-50">
                   {weekTasks.map(task => {
                     const openConstraints = task.constraints?.filter(c => c.status === 'open') || []
-                    const resolvedConstraints = task.constraints?.filter(c => c.status === 'resolved') || []
                     const isExpanded = expandedTask === task.id
+                    const linkedMilestone = task.milestone_id
+                      ? milestones.find(m => m.id === task.milestone_id)
+                      : null
 
                     return (
                       <div key={task.id} className="px-4 py-3">
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-start gap-3">
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="font-medium text-gray-900 text-sm 2xl:text-base truncate">{task.title}</p>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-medium text-gray-900 text-sm 2xl:text-base">{task.title}</p>
                               {openConstraints.length > 0 && (
                                 <ConstraintBadge count={openConstraints.length} />
                               )}
+                              <FloatBadge task={task} milestones={milestones} />
                             </div>
-                            {task.trade && <p className="text-xs text-gray-500 mt-0.5">{task.trade}</p>}
+                            <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                              {task.trade && <p className="text-xs text-gray-500">{task.trade}</p>}
+                              {task.gang_id && <p className="text-xs text-gray-400">· {task.gang_id}</p>}
+                              {task.duration_days && (
+                                <p className="text-xs text-gray-400">· {task.duration_days}d</p>
+                              )}
+                              {task.planned_start && (
+                                <p className="text-xs text-gray-400">
+                                  · starts {new Date(task.planned_start + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                                </p>
+                              )}
+                            </div>
+                            {linkedMilestone && (
+                              <div className="flex items-center gap-1 mt-1">
+                                <span className="text-xs font-bold" style={{ color: RAG_COLOURS[linkedMilestone.rag_status] }}>◆</span>
+                                <span className="text-xs text-gray-500">{linkedMilestone.name}</span>
+                              </div>
+                            )}
                           </div>
+
                           <div className="flex items-center gap-2 flex-shrink-0">
                             {task.constraints?.length > 0 && (
                               <button
@@ -290,11 +374,18 @@ export default function LookaheadPage() {
                               </button>
                             )}
                             {canEdit && (
-                              <button
-                                onClick={() => setShowConstraintForm(task.id)}
-                                className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 min-h-[36px]">
-                                + Constraint
-                              </button>
+                              <>
+                                <button
+                                  onClick={() => setShowConstraintForm(task.id)}
+                                  className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 min-h-[36px]">
+                                  + Constraint
+                                </button>
+                                <button
+                                  onClick={() => openEditTask(task)}
+                                  className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 min-h-[36px]">
+                                  ✎ Edit
+                                </button>
+                              </>
                             )}
                           </div>
                         </div>
@@ -319,9 +410,7 @@ export default function LookaheadPage() {
                                   </div>
                                   <div className="flex items-center gap-2 flex-shrink-0">
                                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                                      c.status === 'open'
-                                        ? 'bg-amber-100 text-amber-700'
-                                        : 'bg-blue-100 text-blue-700'
+                                      c.status === 'open' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
                                     }`}>
                                       {c.status}
                                     </span>
@@ -355,6 +444,16 @@ export default function LookaheadPage() {
         <ConstraintForm
           taskId={showConstraintForm}
           onClose={() => setShowConstraintForm(null)}
+        />
+      )}
+
+      {showTaskModal && (
+        <LookaheadTaskModal
+          projectId={projectId}
+          weekNumber={prefillWeek || currentWeek + 1}
+          existing={editingTask}
+          project={project}
+          onClose={() => { setShowTaskModal(false); setEditingTask(null); setPrefillWeek(null) }}
         />
       )}
     </div>

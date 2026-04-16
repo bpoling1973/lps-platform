@@ -13,6 +13,7 @@ import WWPBoard from '@/features/wwp/WWPBoard'
 import LookaheadPage from '@/features/lookahead/LookaheadPage'
 import PPCPage from '@/features/ppc/PPCPage'
 import ReportsPage from '@/features/reports/ReportsPage'
+import ProjectSettingsPage from '@/features/settings/ProjectSettingsPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -55,6 +56,7 @@ export default function App() {
             <Route path="/project/:projectId/lookahead" element={<ProjectLayout><LookaheadPage /></ProjectLayout>} />
             <Route path="/project/:projectId/ppc" element={<ProjectLayout><PPCPage /></ProjectLayout>} />
             <Route path="/project/:projectId/reports" element={<ProjectLayout><ReportsPage /></ProjectLayout>} />
+            <Route path="/project/:projectId/settings" element={<ProjectLayout><ProjectSettingsPage /></ProjectLayout>} />
             <Route path="/project/:projectId" element={<Navigate to="dashboard" replace />} />
 
             <Route path="*" element={<Navigate to="/" replace />} />

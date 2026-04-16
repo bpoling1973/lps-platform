@@ -74,3 +74,35 @@ export const REPORT_TYPES = {
 
 // OpSolv admin email domain
 export const OPSOLV_DOMAIN = 'opsolv.co.uk'
+
+// Default construction trades (pre-populated, per-project configurable)
+export const DEFAULT_TRADES = [
+  'Groundworks & Drainage',
+  'Concrete & RC Frame',
+  'Structural Steelwork',
+  'Brickwork & Blockwork',
+  'Carpentry & Joinery',
+  'Roofing',
+  'Cladding & Curtain Walling',
+  'Plumbing & Heating',
+  'Electrical',
+  'Mechanical (HVAC)',
+  'Plastering & Drylining',
+  'Flooring',
+  'Painting & Decorating',
+  'Glazing',
+  'Landscaping',
+  'Site Management',
+]
+
+// Palette of distinct colours for zone assignment
+export const ZONE_COLOUR_PALETTE = [
+  '#2563eb', // blue
+  '#d97706', // amber
+  '#7c3aed', // purple
+  '#059669', // teal
+  '#dc2626', // red
+  '#db2777', // pink
+  '#0891b2', // cyan
+  '#65a30d', // lime
+]

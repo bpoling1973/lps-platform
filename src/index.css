@@ -27,6 +27,13 @@ button, a, input, select, textarea {
   touch-action: manipulation;
 }
 
+/* Flash label on segment status click */
+@keyframes fadeOut {
+  0%   { opacity: 1; }
+  70%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
 /* Session mode — scale up text at very large displays */
 @media (min-width: 1600px) {
   html {

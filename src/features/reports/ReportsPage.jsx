@@ -107,7 +107,7 @@ export default function ReportsPage() {
                   })}
                 </p>
                 <p className="text-sm text-gray-500 mt-0.5">
-                  PPC: {record.ppc_percent}% · {record.planned_count} planned · {record.complete_count} complete
+                  PPC: {Math.round(record.ppc_percent)}% · {record.planned_count} planned · {record.complete_count} complete
                   {record.rnc_entries?.length > 0 && ` · ${record.rnc_entries.length} RNC entries`}
                 </p>
               </div>

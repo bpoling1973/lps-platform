@@ -137,7 +137,7 @@ export function PPCReportDocument({ projectName, weekEnding, ppcRecord, tasks, p
                   <Text style={[styles.tableCell, { flex: 1, textAlign: 'right' }]}>{r.complete_count}</Text>
                   <Text style={[styles.tableCell, { flex: 1, textAlign: 'right', fontFamily: 'Helvetica-Bold',
                     color: Number(r.ppc_percent) >= 80 ? NAVY : Number(r.ppc_percent) >= 60 ? AMBER : GREY }]}>
-                    {r.ppc_percent}%
+                    {Math.round(Number(r.ppc_percent))}%
                   </Text>
                 </View>
               ))}
